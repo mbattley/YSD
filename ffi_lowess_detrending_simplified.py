@@ -3,7 +3,7 @@
 """
 Created on Mon Apr 29 14:41:34 2019
 Applies lowess-based detrending pipeline to lcs which can come from a variety of sources (TESS, K2 etc)
-@author: phrhzn
+@author: Matthew Battley (matthew.battley@warwick.ac.uk)
 """
 
 import batman
