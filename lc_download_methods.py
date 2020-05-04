@@ -18,12 +18,14 @@ import eleanor
 import pickle
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from astropy.table import Table
 from astropy.coordinates import SkyCoord
 from lightkurve import search_lightcurvefile
 from numpy import loadtxt
 from astroquery.mast import Tesscut
 from astroquery.mast import Catalogs
+from astropy.io import fits
 
 def two_min_lc_download(target_ID, sector, from_file = True):
     """
@@ -31,21 +33,31 @@ def two_min_lc_download(target_ID, sector, from_file = True):
     """
     if from_file == True:
         # reads input table for targets
-        table_data = Table.read("BANYAN_XI-III_members_with_TIC.csv" , format='ascii.csv')
+        table_data = Table.read("K2_2min_overlap_observed.csv" , format='ascii.csv')
         
         # Obtains ra and dec for object from target_ID
-        i = list(table_data['main_id']).index(target_ID)
+        i = list(table_data['TICID']).index(target_ID)
+        print(i)
         #camera = table_data['S{}'.format(sector)][i]
-        tic = table_data['MatchID'][i]
+#        tic = table_data['MatchID'][i]
+        tic = 'TIC ' + str(target_ID)
+        
+        # Find sector
+        sector_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+        for sector_num in sector_list:
+            if table_data['S'+str(sector_num)][i] != 0:
+                sector = sector_num
     else:
-        tic = target_ID
+        tic = 'TIC ' + str(target_ID)
     lcf = search_lightcurvefile(tic, sector=sector).download()
+#    lcf = search_lightcurvefile(tic).download()
+#    sector = 
     
     # Seperate lightcurves
     sap_lc = lcf.SAP_FLUX
     pdcsap_lc = lcf.PDCSAP_FLUX
     
-    return sap_lc, pdcsap_lc
+    return sap_lc, pdcsap_lc, sector
 
 def k2_lc_download(target_ID, campaign, from_file = True):
     """
@@ -167,7 +179,7 @@ def diff_image_lc_download(target_ID, sector, plot_lc = True, from_file = True, 
     filename = '{}_sector0{}_{}_{}.lc'.format(tic, sector, camera, ccd)
 #    filename = '410214986_sector01_3_2.lc'
 
-    
+    print('Trying file {}'.format(filename))
     try:
         lines = loadtxt(filename, delimiter = ' ') # For when in local directory
 #        lines = loadtxt(DIAdir+filename, delimiter = ' ') # For when on ngtshead
@@ -191,7 +203,7 @@ def diff_image_lc_download(target_ID, sector, plot_lc = True, from_file = True, 
             diffImage_fig.show()
         
         lc = lightkurve.LightCurve(time = DIA_lc[0],flux = norm_flux, flux_err = DIA_lc[2], targetid = target_ID)
-
+        print('Got the light-curve out')
         
         return lc, filename
     except:
@@ -280,3 +292,77 @@ def eleanor_lc_download(target_ID, sector, plot_raw = False, plot_corr = False, 
     
     return raw_lc, corr_lc, pca_lc #, psf_lc
 
+def lc_from_csv(filename):
+#    data = Table.read(filename, format='ascii.csv')
+    data = pd.read_csv(filename)
+    time = data['time']
+    detrended_flux = data['flux'] 
+    flux_err = data['flux_err']
+    detrended_lc = lightkurve.LightCurve(time,detrended_flux, flux_err)
+    return detrended_lc
+
+def get_lc_from_fits(filename, source='QLP'):
+    """
+    Obtains lc from fits file if not one of the standard TESS pipelines
+    n.b. Currently set up to handle QLP and CDIPS files, though easily extended
+    """
+#    fits.info(filename)
+    hdul = fits.open(filename)
+    data = hdul[1].data
+#    print(hdul[1].header)
+    
+    if source == 'QLP':
+        tic = filename[25:34]
+        
+        time = data['TIME']
+        sap_flux = data['SAP_FLUX']
+        kspsap_flux = data['KSPSAP_FLUX']
+        quality = data['QUALITY']
+        quality = quality.astype(bool)
+        
+        clean_time = time[~quality]
+        clean_flux = sap_flux[~quality]
+        clean_kspsap_flux = kspsap_flux[~quality]
+        
+        plt.figure()
+        plt.scatter(clean_time, clean_flux,s=1,c='k')
+        plt.title('SAP lc for TIC {}'.format(tic))
+        plt.show()
+        
+        plt.figure()
+        plt.scatter(clean_time, clean_kspsap_flux,s=1,c='k')
+        plt.title('KSPSAP lc for TIC {}'.format(tic))
+        plt.show()
+        
+        hdul.close()
+        
+        lc = lightkurve.LightCurve(time = clean_time, flux = clean_flux, flux_err = quality[~quality], targetid = tic)
+        return lc
+    elif source == 'CDIPS':
+#        print('Using CDIPS')
+        tic = hdul[0].header['TICID']
+        sector = hdul[0].header['SECTOR']
+        
+        time = data['TMID_BJD']
+        time = [x - 2457000 for x in time]
+        mag = data['IRM3']
+        pca_mag = data['PCA3']
+        mag_err = data['IRE3']
+        
+        
+        plt.figure()
+        plt.scatter(time, mag,s=1,c='k')
+        plt.title('SAP lc for TIC {}'.format(tic))
+        plt.show()
+        
+        plt.figure()
+        plt.scatter(time, pca_mag,s=1,c='k')
+        plt.title('PCA lc for TIC {}'.format(tic))
+        plt.show()
+        
+        hdul.close()
+        lc = lightkurve.LightCurve(time = time, flux = mag, flux_err = mag_err, targetid = tic)
+        return lc, sector
+    else:
+        print('Please enter a valid source')
+        return 
