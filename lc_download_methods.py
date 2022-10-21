@@ -14,7 +14,7 @@ i.e. time = lc.time, flux = lc.flux, flux_err = lc.flux_err
 """
 
 import lightkurve
-import eleanor
+#import eleanor
 import pickle
 import matplotlib.pyplot as plt
 import numpy as np
@@ -25,7 +25,7 @@ from lightkurve import search_lightcurvefile
 from numpy import loadtxt
 from astroquery.mast import Tesscut
 from astroquery.mast import Catalogs
-from astropy.io import fits
+from astropy.io import ascii, fits
 
 def two_min_lc_download(target_ID, sector, from_file = True):
     """
@@ -49,6 +49,8 @@ def two_min_lc_download(target_ID, sector, from_file = True):
                 sector = sector_num
     else:
         tic = 'TIC ' + str(target_ID)
+#        tic = target_ID
+    print(tic)
     lcf = search_lightcurvefile(tic, sector=sector).download()
 #    lcf = search_lightcurvefile(tic).download()
 #    sector = 
@@ -57,7 +59,7 @@ def two_min_lc_download(target_ID, sector, from_file = True):
     sap_lc = lcf.SAP_FLUX
     pdcsap_lc = lcf.PDCSAP_FLUX
     
-    return sap_lc, pdcsap_lc, sector
+    return sap_lc, pdcsap_lc
 
 def k2_lc_download(target_ID, campaign, from_file = True):
     """
@@ -141,14 +143,18 @@ def diff_image_lc_download(target_ID, sector, plot_lc = True, from_file = True, 
     Downloads and returns 30min cadence lightcurves based on Oelkers & Stassun
     difference imaging analysis method of lightcurve extraction
     """
-    DIAdir = '/ngts/scratch/tess/FFI-LC/S{}/clean/'.format(sector)
+    if sector < 3:
+        DIAdir = '/tess/photometry/DIA_FFI/S{}/clean/'.format(sector)
+    else:
+        DIAdir = '/tess/photometry/DIA_FFI/S{}/lc/clean/'.format(sector)
     
     if from_file == True:
         # reads input table for targets
-        table_data = Table.read("BANYAN_XI-III_members_with_TIC.csv" , format='ascii.csv')
+        table_data = Table.read("BANYAN_XI-III_members_with_TIC.csv", format='ascii.csv' )  # For Python 3
+#        table_data = pd.read_csv("BANYAN_XI-III_members_with_TIC_simple.csv") # When on python 2.7
         
         # Obtains ra and dec for object from target_ID
-        i = list(table_data['main_id']).index(target_ID)
+        i = list(table_data['MatchID']).index(target_ID)
         ra = table_data['ra'][i]
         dec = table_data['dec'][i]
         #camera = table_data['S{}'.format(sector)][i]
@@ -163,8 +169,10 @@ def diff_image_lc_download(target_ID, sector, plot_lc = True, from_file = True, 
     
     object_coord = SkyCoord(ra, dec, unit="deg")
     sector_info = Tesscut.get_sectors(object_coord)
+    #print(sector_info)
     
     for i in range(len(sector_info)):
+        #print(sector_info[i][0])
         if sector_info[i][1] == sector:
             index = i
             
@@ -189,6 +197,7 @@ def diff_image_lc_download(target_ID, sector, plot_lc = True, from_file = True, 
         # Convert TESS magnitudes to flux
         DIA_flux =  10**(-0.4*(DIA_mag - 20.60654144))
         norm_flux = DIA_flux/np.median(DIA_flux)
+        err = DIA_lc[2]
         
         # Plot Difference imaged data
         if plot_lc == True:
@@ -199,10 +208,10 @@ def diff_image_lc_download(target_ID, sector, plot_lc = True, from_file = True, 
             plt.xlabel('Time')
             plt.title('{} - Difference imaged light curve from FFIs'.format(target_ID))
             #diffImage_fig.savefig(save_path + '{} - Sector {} - DiffImage flux.png'.format(target_ID, sector))
-            plt.close(diffImage_fig)
+#            plt.close(diffImage_fig)
             diffImage_fig.show()
         
-        lc = lightkurve.LightCurve(time = DIA_lc[0],flux = norm_flux, flux_err = DIA_lc[2], targetid = target_ID)
+        lc = lightkurve.LightCurve(time = DIA_lc[0],flux = norm_flux, flux_err = err, targetid = target_ID)
         print('Got the light-curve out')
         
         return lc, filename
@@ -227,7 +236,7 @@ def eleanor_lc_download(target_ID, sector, plot_raw = False, plot_corr = False, 
         tic = table_data['MatchID'][i]
     else:
         # Find ra, dec and tic # via the TIC (typically based on Gaia DR2)
-        TIC_table = Catalogs.query_object(target_ID, catalog = "TIC")
+#        TIC_table = Catalogs.query_object(target_ID, catalog = "TIC")
 #        ra = TIC_table['ra'][0]
 #        dec = TIC_table['dec'][0]
 #        tic = TIC_table['ID'][0]
@@ -276,8 +285,8 @@ def eleanor_lc_download(target_ID, sector, plot_raw = False, plot_corr = False, 
         plt.xlabel('Time')
         plt.title('{} - eleanor light curve from FFIs - pca flux'.format(target_ID))
         pca_eleanor_fig.savefig(save_path + '{} - Sector {} - eleanor pca flux.png'.format(target_ID, sector))
-        plt.close(pca_eleanor_fig)
-        #plt.show()
+#        plt.close(pca_eleanor_fig)
+        plt.show()
     
     # Plot psf flux
     #eleanor.TargetData.psf_lightcurve(data, model='gaussian', likelihood='poisson')
@@ -301,7 +310,23 @@ def lc_from_csv(filename):
     detrended_lc = lightkurve.LightCurve(time,detrended_flux, flux_err)
     return detrended_lc
 
-def get_lc_from_fits(filename, source='QLP'):
+def ngts_ys_lcs(filename):
+    """
+    Reads lc data from file format of NGTS young star lightcurves
+    """
+    data = ascii.read(filename)
+    time = data['HJD']
+    raw_flux = data['FLUX-RAW']
+    detr_flux = data['FLUX-DETR']
+    flux_err = data['FLUX-ERR']
+    sky_bkg = data['SKY_BG']
+    lc_raw = lightkurve.LightCurve(time,raw_flux,flux_err)
+    lc_detr = lightkurve.LightCurve(time,detr_flux,flux_err)
+    lc_bkg = lightkurve.LightCurve(time,sky_bkg,flux_err)
+    return lc_raw, lc_detr, lc_bkg
+
+
+def get_lc_from_fits(filename, source='QLP', clean=True, plot_lc = False, target_ID=None, fluxvmag = 'flux'):
     """
     Obtains lc from fits file if not one of the standard TESS pipelines
     n.b. Currently set up to handle QLP and CDIPS files, though easily extended
@@ -312,57 +337,170 @@ def get_lc_from_fits(filename, source='QLP'):
 #    print(hdul[1].header)
     
     if source == 'QLP':
-        tic = filename[25:34]
+        if target_ID == None:
+            tic = filename[28:40]
+        else:
+            tic = target_ID
         
         time = data['TIME']
         sap_flux = data['SAP_FLUX']
         kspsap_flux = data['KSPSAP_FLUX']
+        kspsap_err = data['KSPSAP_FLUX_ERR']
         quality = data['QUALITY']
-        quality = quality.astype(bool)
+        sap_bkg_err = data['SAP_BKG_ERR']
+        nancut = np.isnan(sap_flux) | np.isnan(sap_bkg_err)
+        bkg_err_median = np.median(sap_bkg_err[~nancut])
+        print('Median background err = {}'.format(bkg_err_median))
+#        quality = quality.astype(bool)
+        quality = np.array([item>4095 for item in quality])
+#        for i, item in enumerate(quality):
+#            if sap_bkg_err[i] > 2*bkg_err_median:
+#                quality[i] = True
         
-        clean_time = time[~quality]
-        clean_flux = sap_flux[~quality]
-        clean_kspsap_flux = kspsap_flux[~quality]
+        if clean == True:
+            clean_time = time[~quality]
+            clean_flux = sap_flux[~quality]
+            clean_kspsap_flux = kspsap_flux[~quality]
+            clean_kspsap_err = kspsap_err[~quality]
+            quality = quality[~quality]
+            
+        else:
+            clean_time = time
+            clean_flux = sap_flux
+            clean_kspsap_flux = kspsap_flux
+            clean_kspsap_err = kspsap_err
+            quality = quality
         
-        plt.figure()
-        plt.scatter(clean_time, clean_flux,s=1,c='k')
-        plt.title('SAP lc for TIC {}'.format(tic))
-        plt.show()
+        if plot_lc == True:
+            plt.figure(figsize=(10,4))
+            plt.scatter(clean_time, clean_flux,s=1,c='k')
+            plt.title('QLP lc for TIC {}'.format(tic))
+            plt.xlabel('Time - 2457000 [BTJD days]')
+            plt.ylabel('Normalized Flux')
+            plt.show()
         
-        plt.figure()
-        plt.scatter(clean_time, clean_kspsap_flux,s=1,c='k')
-        plt.title('KSPSAP lc for TIC {}'.format(tic))
-        plt.show()
+#        plt.figure()
+#        plt.scatter(clean_time, clean_kspsap_flux,s=1,c='k')
+#        plt.title('KSPSAP lc for TIC {}'.format(tic))
+#        plt.show()
         
         hdul.close()
         
-        lc = lightkurve.LightCurve(time = clean_time, flux = clean_flux, flux_err = quality[~quality], targetid = tic)
+        lc = lightkurve.LightCurve(time = clean_time, flux = clean_flux, flux_err = clean_kspsap_err, targetid = tic)
         return lc
     elif source == 'CDIPS':
 #        print('Using CDIPS')
         tic = hdul[0].header['TICID']
-        sector = hdul[0].header['SECTOR']
+        #sector = hdul[0].header['SECTOR']
         
         time = data['TMID_BJD']
         time = [x - 2457000 for x in time]
-        mag = data['IRM3']
-        pca_mag = data['PCA3']
-        mag_err = data['IRE3']
+        flux = data['IFL2']
+        pca_mag = data['PCA2']
+        mag_err = data['IFE2']
+        if fluxvmag == 'flux':
+            flux_from_mag = 10**(pca_mag/-2.5)
+            normalized_flux = flux_from_mag/np.median(flux_from_mag)
+        elif fluxvmag == 'mag':
+            print('Warning: Uing mag instead of flux')
+            normalized_flux = 2+np.array(-pca_mag)/np.median(pca_mag)
+        else:
+            print("Please enter 'flux' or 'mag' for fluxvmag")
         
-        
-        plt.figure()
-        plt.scatter(time, mag,s=1,c='k')
-        plt.title('SAP lc for TIC {}'.format(tic))
-        plt.show()
-        
-        plt.figure()
-        plt.scatter(time, pca_mag,s=1,c='k')
-        plt.title('PCA lc for TIC {}'.format(tic))
-        plt.show()
+        if plot_lc == True:
+            plt.figure()
+            plt.scatter(time, flux,s=1,c='k')
+            plt.title('SAP lc for TIC {}'.format(tic))
+            plt.show()
+            
+            plt.figure()
+            plt.scatter(time, pca_mag,s=1,c='k')
+            plt.title('PCA lc for TIC {}'.format(tic))
+            plt.show()
         
         hdul.close()
-        lc = lightkurve.LightCurve(time = time, flux = mag, flux_err = mag_err, targetid = tic)
-        return lc, sector
+        lc = lightkurve.LightCurve(time = time, flux = normalized_flux, flux_err = mag_err, targetid = tic)
+        return lc
+    elif source == 'K2SFF':
+        # Fill in K2SFF method
+        k2sff_data = hdul['BESTAPER'].data
+        k2sff_time = k2sff_data['T'] + 2454833 #Convert to BJD for consistency
+        k2sff_flux = k2sff_data['FCOR']
+        
+        plt.figure()
+        plt.scatter(k2sff_time,k2sff_flux,s=2,c='r', label = 'K2-SFF 30min')
+        plt.legend()
+        plt.xlabel('Time [BJD]')
+        plt.ylabel("Normalized Flux")
+        plt.show()
+        hdul.close()
+        lc = lightkurve.LightCurve(time = k2sff_time, flux = k2sff_flux)
+        return lc
+    elif source == 'tessFFIextract':
+        time = data['BJD']
+        time = [x - 2457000 for x in time]
+        flux = data['AP2.5']/np.median(data['AP2.5'])
+        
+        if plot_lc == True:
+            original_lc_fig = plt.figure()
+            plt.scatter(time, flux,s=1,c='k')
+            plt.title('Original lc')
+            plt.xlabel('Time [BJD -2457000]')
+            plt.ylabel('Flux')
+#            original_lc_fig.savefig(save_path + "TIC {} - original CDIPS lc.pdf".format(tic))
+            plt.show()
+#            plt.close(original_lc_fig)
+        
+        lc = lightkurve.LightCurve(time = time, flux = flux, flux_err = flux)
+        hdul.close()
+        return lc
+    elif source == 'SPOC-FFI':
+        time = data['TIME']
+        sap_flux = data['SAP_FLUX']
+        pdcsap_flux = data['PDCSAP_FLUX']
+        pdcsap_err = data['PDCSAP_FLUX_ERR']
+        
+        nancut = np.isnan(pdcsap_flux) | np.isnan(time)
+        sap_flux = sap_flux[~nancut]
+        time = time[~nancut]
+        pdcsap_err = pdcsap_err[~nancut]
+        pdcsap_flux = pdcsap_flux[~nancut]
+        
+        normalized_flux = pdcsap_flux/np.median(pdcsap_flux)
+        
+        
+        if plot_lc == True:
+            lc_fig = plt.figure()
+            plt.scatter(time, normalized_flux,s=1,c='k')
+            plt.title('Original lc for {}'.format(target_ID))
+            plt.xlabel('Time [BJD -2457000]')
+            plt.ylabel('Flux')
+#            original_lc_fig.savefig(save_path + "TIC {} - original CDIPS lc.pdf".format(tic))
+            plt.show()
+#            plt.close(lc_fig)
+        
+        lc = lightkurve.LightCurve(time = time, flux = normalized_flux, flux_err = pdcsap_err)
+        hdul.close()
+        return lc
+    elif source == 'k2VarCat':
+        time = data['TIME']
+        sap_flux = data['APTFLUX']
+        detrend_flux = data['DETFLUX']
+        detrend_flux_err = data['DETFLUX_ERR']
+        
+        if plot_lc == True:
+            lc_fig = plt.figure()
+            plt.scatter(time, detrend_flux,s=1,c='k')
+            plt.title('Original lc')
+            plt.xlabel('Time')
+            plt.ylabel('Flux')
+#            original_lc_fig.savefig(save_path + "TIC {} - original CDIPS lc.pdf".format(tic))
+            plt.show()
+#            plt.close(lc_fig)
+        lc = lightkurve.LightCurve(time = time, flux = detrend_flux, flux_err = detrend_flux_err)
+        hdul.close()
+        return lc
+        
     else:
         print('Please enter a valid source')
         return 
