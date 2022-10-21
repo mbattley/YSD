@@ -6,10 +6,15 @@ interpolation of stellar trends over potential transits.
 This is a streamlined version of a larger pipeline still under development, so improvements can be expected later. 
 
 There are two main ways to run the code:
-  - Using ffi_lowess_detrending_simplified.py: This is a simplified version of the Python script used in Battley, Pollacco & Armstrong (2020), which also 
-  allows for injection of planet signals.
-  - Using ffi_lowess_detrending_single_lc_function.py: This is a python function, allowing simple adjustments to be made in the control line without having
-  to take a deep-dive into the code. Inputs/outputs are as follows:
+  1. Using ffi_lowess_detrending_simplified.py: This is a simplified version of the Python script used in Battley, Pollacco & Armstrong (2020), which also 
+  allows for injection of planet signals. Note that this is now slightly outdated, so I reccommend the next option:
+  
+  2. Using ffi_lowess_detrending_single_lc_function.py: This is a python function, allowing simple adjustments to be made in the control line without
+  having to take a deep-dive into the code. Once the script has been run, the function can be called as lowess_detrend() from the command line. 
+  Running this without changing any inputs will give an example detrending of DS Tuc A, showing the automatic recovery of DS Tuc A b/ TOI 200.01,
+  the first young exoplanet discovered by TESS.
+  
+  Inputs/outputs are explained as follows:
       Inputs:
         - target_ID:     String. Name of object, ideally a TIC number e.g. 'TIC 410214986'
         - pipeline:      String. Pipeline that lc is from. Can be '2min', 'SPOC-FFI', 'QLP', 'DIA', or 'tessFFIextract' 
