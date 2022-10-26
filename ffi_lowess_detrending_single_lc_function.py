@@ -529,9 +529,10 @@ def lowess_detrend(target_ID='410214986',pipeline='DIA',detrending='lowess_full'
     # with open('Detrended_flux.pkl', 'wb') as f:
     #     pickle.dump(BLS_flux, f, pickle.HIGHEST_PROTOCOL)
     time_mask = [True]*len(t_cut)
-    for i in range(len(t_cut)):
-        if t_cut[i] > 1800:
-            time_mask[i] = False
+    if multi_sector == True and t_cut[-1] > 20000    
+        for i in range(len(t_cut)):
+            if t_cut[i] < 1800:
+                time_mask[i] = False
     short_time = t_cut[time_mask]
     short_flux = BLS_flux[time_mask]
     model = BoxLeastSquares(short_time*u.day, short_flux)
